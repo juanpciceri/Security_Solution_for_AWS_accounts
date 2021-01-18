@@ -1,2 +1,2 @@
 # Security_Solution_for_AWS_accounts
-This cloudformation script let you set up AWS security hub as a main security risks monitor dashboard,along with AWS guard duty and AWS IAM analyzer
+This cloudformation script let you set up AWS security hub as a main security risks monitor dashboard,along with AWS guard duty and AWS IAM analyzer. You will recieve by mail any new security gaps findings on your AWS account related with CIS / PCI DSS security standards & AWS Foundational security best practices. Security hub is a great tool that will point the security gap and the remediate steps.
