@@ -1,0 +1,453 @@
+{"AWSTemplateFormatVersion" : "2010-09-09",
+"Parameters" : {
+  "email" : {
+    "Description" : "Fill with mail that will recieve security findings",
+    "Type" : "String"
+  },
+  "email2" : {
+    "Description" : "Fill with mail that will recieve security findings",
+    "Type" : "String"
+  }
+},
+"Conditions": {
+  
+    "email": {"Fn::Not": [{"Fn::Equals": ["", {"Ref": "email"}]}]},
+    "email2": {"Fn::Not": [{"Fn::Equals": ["", {"Ref": "email2"}]}]}
+  },
+"Resources" :{
+  "FlowLogRole":{
+    "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {   "Sid": "",  
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "vpc-flow-logs.amazonaws.com",
+ 				                            "cloudtrail.amazonaws.com"	,
+ 				                            "guardduty.amazonaws.com",
+ 				                            "events.amazonaws.com"
+
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "test",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Action": [
+                                       "logs:*",
+                                       "events:*"
+                                          ],
+                                        "Effect": "Allow",
+                                        "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+  },
+  "IamRoleForAwsConfig": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AWSConfigRole"
+                ],
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "config.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "allow-access-to-config-s3-bucket",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:PutObject"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    {
+                                                        "Fn::GetAtt": [
+                                                            "S3BucketForAwsConfig",
+                                                            "Arn"
+                                                        ]
+                                                    },
+                                                    "/*"
+                                                ]
+                                            ]
+                                        }
+                                    ],
+                                    "Condition": {
+                                        "StringLike": {
+                                            "s3:x-amz-acl": "bucket-owner-full-control"
+                                        }
+                                    }
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetBucketAcl"
+                                    ],
+                                    "Resource": {
+                                        "Fn::GetAtt": [
+                                            "S3BucketForAwsConfig",
+                                            "Arn"
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+  "myTrail": {
+            "DependsOn": [
+                "BucketPolicy"
+            ],
+            "Type": "AWS::CloudTrail::Trail",
+            "Properties": {
+		"CloudWatchLogsLogGroupArn" : {
+        "Fn::GetAtt": [
+          "Cloudtrailogs",
+          "Arn"
+        ]
+      },
+      		"CloudWatchLogsRoleArn" : {"Fn::GetAtt": [
+          "FlowLogRole",
+          "Arn"
+        ]},
+                "S3BucketName": {
+                    "Ref": "S3Bucket"
+                },
+		"IncludeGlobalServiceEvents":true,
+                "IsLogging": true,
+                "IsMultiRegionTrail": true
+            }
+        },
+  "Cloudtrailogs":{
+        "Type" : "AWS::Logs::LogGroup",
+        "Properties" : {
+            "LogGroupName" :"SMB/Security/Cloudtrail/logs",
+            "RetentionInDays" : 30
+      }
+
+},
+"S3Bucket": {
+            "DeletionPolicy": "Delete",
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                
+            }
+        },
+  "BucketPolicy": {
+            "Type": "AWS::S3::BucketPolicy",
+            "Properties": {
+                "Bucket": {
+                    "Ref": "S3Bucket"
+                },
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AWSCloudTrailAclCheck",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "cloudtrail.amazonaws.com"
+                            },
+                            "Action": "s3:GetBucketAcl",
+                            "Resource": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "arn:aws:s3:::",
+                                        {
+                                            "Ref": "S3Bucket"
+                                        }
+                                    ]
+                                ]
+                            }
+                        },
+                        {
+                            "Sid": "AWSCloudTrailWrite",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "cloudtrail.amazonaws.com"
+                            },
+                            "Action": "s3:PutObject",
+                            "Resource": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "arn:aws:s3:::",
+                                        {
+                                            "Ref": "S3Bucket"
+                                        },
+                                        "/AWSLogs/",
+                                        {
+                                            "Ref": "AWS::AccountId"
+                                        },
+                                        "/*"
+                                    ]
+                                ]
+                            },
+                            "Condition": {
+                                "StringEquals": {
+                                    "s3:x-amz-acl": "bucket-owner-full-control"
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+  
+
+
+  "SecurityHub": {
+            "DependsOn": [
+                "ConfigurationRecorder","DeliveryChannel","Analyzer","myassessmenttarget"
+            ],
+            "Type": "AWS::SecurityHub::Hub",
+            "Properties": {}
+        },
+  "ConfigurationRecorder": {
+            "Type": "AWS::Config::ConfigurationRecorder",
+            "Properties": {
+                "RoleARN": {
+                    "Fn::GetAtt": [
+                        "IamRoleForAwsConfig",
+                        "Arn"
+                    ]
+                },
+                "RecordingGroup": {
+                    "AllSupported": true,
+                    "IncludeGlobalResourceTypes": true
+                }
+            }
+        },
+  "DeliveryChannel": {
+            "Type": "AWS::Config::DeliveryChannel",
+            "Properties": {
+                "S3BucketName": {
+                    "Ref": "S3BucketForAwsConfig"
+                }
+            }
+        },
+  "S3BucketForAwsConfig": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {}
+        },
+  
+  "SnsTopic1": {
+            
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                
+                "TopicName": "sns-topic"
+            }
+        },
+        "MySubscription" : {
+  "Condition":"email", 
+  "DependsOn": [
+                "SnsTopic1"
+            ],
+  "Type" : "AWS::SNS::Subscription",
+  "Properties" : {
+    "Endpoint" :  {
+        "Ref": "email"
+      },
+    "Protocol" : "email",
+    "TopicArn" : {"Ref": 
+                        "SnsTopic1"
+              }
+  }
+},
+"MySubscription2" : {
+  "Condition":"email2", 
+  "DependsOn": [
+                "SnsTopic1"
+            ],
+  "Type" : "AWS::SNS::Subscription",
+  "Properties" : {
+    "Endpoint" :  {
+        "Ref": "email2"
+      },
+    "Protocol" : "email",
+    "TopicArn" : {"Ref": 
+                        "SnsTopic1"
+              }
+  }
+},
+  "CwEvent1": {
+    "DependsOn": [
+                "SecurityHub"
+            ],
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "Name": "detect-securityhub-finding",
+                "Description": "A CloudWatch Event Rule that triggers on AWS Security Hub findings. The Event Rule can be used to trigger notifications or remediative actions using AWS Lambda.",
+                "State": "ENABLED",
+                "Targets": [
+                    {
+                        "Arn": {
+                            "Ref": "SnsTopic1"
+                        },
+                        "Id": "target-id1",
+                        "InputTransformer" : {
+                          "InputPathsMap":{"findingTime":"$.detail.findings[0].updatedAt","finding":"$.detail.findings[0].Types[0]","region":"$.detail.findings[0].Resources[0].Region","account":"$.detail.findings[0].AwsAccountId","findingDescription":"$.detail.findings[0].Description"},
+                        "InputTemplate" :"\"AWS SecurityHub finding in <region> for Account: <account>. The finding is <finding> and the description of the finding is <findingDescription>.\""
+                        }
+                    }
+                ],
+                "EventPattern": {
+                    "detail-type": [
+                        "Security Hub Findings - Imported"
+                    ],
+                    "source": [
+                        "aws.securityhub"
+                    ]
+                }
+            }
+        },
+  "SnsTopicPolicy": {
+            "Type": "AWS::SNS::TopicPolicy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Sid": "__default_statement_ID",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": "*"
+                            },
+                            "Action": [
+                                "SNS:GetTopicAttributes",
+                                "SNS:SetTopicAttributes",
+                                "SNS:AddPermission",
+                                "SNS:RemovePermission",
+                                "SNS:DeleteTopic",
+                                "SNS:Subscribe",
+                                "SNS:ListSubscriptionsByTopic",
+                                "SNS:Publish",
+                                "SNS:Receive"
+                            ],
+                            "Resource": {
+                                "Ref": "SnsTopic1"
+                            },
+                            "Condition": {
+                                "StringEquals": {
+                                    "AWS:SourceOwner": {
+                                        "Ref": "AWS::AccountId"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "Sid": "TrustCWEToPublishEventsToMyTopic",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "events.amazonaws.com"
+                            },
+                            "Action": "sns:Publish",
+                            "Resource": {
+                                "Ref": "SnsTopic1"
+                            }
+                        }
+                    ]
+                },
+                "Topics": [
+                    {
+                        "Ref": "SnsTopic1"
+                    }
+                ]
+            }
+        },
+  
+  
+
+  "guarddutyeventtopic":{
+        "Type" : "AWS::Logs::LogGroup",
+        "Properties" : {
+            "LogGroupName" :"/aws/events/CFN",
+            "RetentionInDays" : 30
+      }
+
+},
+  
+  "Guardetector":{ "Type" : "AWS::GuardDuty::Detector",
+    "Properties" : {
+        "Enable" : true,
+        "FindingPublishingFrequency" : "FIFTEEN_MINUTES"}
+  
+  
+},
+  "GuardDutyEventRule": {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+                "EventPattern": {
+                    "source": [
+                        "aws.guardduty"
+                    ]
+                },
+                "Name": "guardduty-event-rule",
+                "State": "ENABLED",
+                "RoleArn" : {"Fn::GetAtt": [
+          "FlowLogRole",
+          "Arn"
+        ]},
+                "Targets": [
+                    {
+                        "Arn": {
+                            "Fn::GetAtt": [
+                        "guarddutyeventtopic",
+                        "Arn"
+        ]
+                        },
+                        "Id": "LogGroup"
+                    }
+                ]
+            }
+        },
+  "Analyzer": {
+      "Type": "AWS::AccessAnalyzer::Analyzer",
+      "Properties": {
+        "AnalyzerName": "DevAccountAnalyzer",
+        "Type": "ACCOUNT"
+      }},
+      "myassessmenttarget": {
+  "Type": "AWS::Inspector::AssessmentTarget",
+  "Properties": {
+    "AssessmentTargetName" : "MyAssessmentTarget"
+  }
+}
+        
+}}
